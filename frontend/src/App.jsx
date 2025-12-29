@@ -1,95 +1,64 @@
-import React, { useState, useEffect } from 'react'; // Am adăugat useEffect
-import { BrowserRouter, Routes, Route, Navigate, Link } from 'react-router-dom';
-import Home from './Home';
-import Login from './Login';
-import Register from './Register';
-import authService from './authService';
-import './App.css';
+import React, { useState } from 'react';
+import { Routes, Route, Link, useNavigate, Navigate } from 'react-router-dom';
+import Login from './Login.jsx';
+import Register from './Register.jsx';
+import Home from './Home.jsx';
+import authService from './authService.jsx';
+import Cookies from 'js-cookie';
+
+// CORECȚIE: PrivateRoute primește acum starea de autentificare ca prop
+const PrivateRoute = ({ children, isLoggedIn }) => {
+    // Nu mai citește cookie-ul, ci folosește direct valoarea primită
+    return isLoggedIn ? children : <Navigate to="/login" />;
+};
 
 function App() {
-    // MODIFICARE: Inițializăm starea ca 'null' pentru a ști când se încarcă
-    const [isAuthenticated, setIsAuthenticated] = useState(null);
+    const navigate = useNavigate();
+    // Starea de autentificare este sursa de adevăr. Inițial, este falsă.
+    const [isLoggedIn, setIsLoggedIn] = useState(false);
 
-    // MODIFICARE: Verificăm starea sesiunii la încărcarea aplicației
-    useEffect(() => {
-        // Încercăm să verificăm dacă există o sesiune activă (ex. un endpoint /me)
-        // Deocamdată, vom presupune că nu e logat la încărcare.
-        // Într-o aplicație reală, ai face un request aici să vezi dacă e logat.
-        // Pentru a evita pagina albă, setăm o valoare inițială.
-        setIsAuthenticated(false); // Presupunem 'false' inițial
-    }, []);
+    const handleLogout = () => {
+        authService.logout().finally(() => {
+            setIsLoggedIn(false);
+            navigate('/login');
+        });
+    };
 
+    // Funcția care va fi apelată de componenta Login la succes
     const handleLoginSuccess = () => {
-        setIsAuthenticated(true);
+        setIsLoggedIn(true);
+        navigate('/home');
     };
-
-    const handleLogout = async () => {
-        try {
-            await authService.logout();
-        } catch (error) {
-            console.error('Logout error:', error);
-        } finally {
-            setIsAuthenticated(false);
-        }
-    };
-
-    // MODIFICARE: Afișăm "Loading..." cât timp verificăm starea (cât isAuthenticated e null)
-    if (isAuthenticated === null) {
-        return <div>Loading...</div>; // Previne "flash-ul" paginii de login
-    }
 
     return (
-        <BrowserRouter>
-            <nav className="navbar">
-                <div className="nav-links">
-                    {isAuthenticated && (
-                        <Link to="/home">Home</Link>
-                    )}
-                    {!isAuthenticated && (
-                        <Link to="/login">Login</Link>
-                    )}
-                    {!isAuthenticated && (
-                        <Link to="/register">Register</Link>
-                    )}
-                </div>
-                {isAuthenticated && (
-                    <button onClick={handleLogout} className="logout-button">
-                        Logout
-                    </button>
-                )}
+        <div>
+            <nav>
+                <ul>
+                    {isLoggedIn && <li><Link to="/home">Home</Link></li>}
+                    {!isLoggedIn && <li><Link to="/login">Login</Link></li>}
+                    {!isLoggedIn && <li><Link to="/register">Sign Up</Link></li>}
+                    {isLoggedIn && <li><button onClick={handleLogout}>Logout</button></li>}
+                </ul>
             </nav>
+            <hr />
+            <Routes>
+                <Route path="/login" element={<Login onLoginSuccess={handleLoginSuccess} />} />
+                <Route path="/register" element={<Register />} />
 
-            <div className="content">
-                <Routes>
-                    {/* MODIFICARE: Ruta rădăcină "/" */}
-                    <Route
-                        path="/"
-                        element={<Navigate to={isAuthenticated ? "/home" : "/login"} replace />}
-                    />
-
-                    <Route
-                        path="/login"
-                        element={!isAuthenticated ? <Login onLoginSuccess={handleLoginSuccess} /> : <Navigate to="/home" replace />}
-                    />
-
-                    <Route
-                        path="/register"
-                        element={!isAuthenticated ? <Register /> : <Navigate to="/home" replace />}
-                    />
-
-                    <Route
-                        path="/home"
-                        element={isAuthenticated ? <Home /> : <Navigate to="/login" replace />}
-                    />
-
-                    {/* MODIFICARE: Wildcard-ul '*' redirecționează înapoi la rădăcină */}
-                    <Route
-                        path="*"
-                        element={<Navigate to="/" replace />}
-                    />
-                </Routes>
-            </div>
-        </BrowserRouter>
+                {/* CORECȚIE: Pasăm starea 'isLoggedIn' către PrivateRoute */}
+                <Route
+                    path="/home"
+                    element={
+                        <PrivateRoute isLoggedIn={isLoggedIn}>
+                            <Home />
+                        </PrivateRoute>
+                    }
+                />
+                
+                {/* Ruta implicită */}
+                <Route path="/" element={<Navigate to="/login" />} />
+            </Routes>
+        </div>
     );
 }
 

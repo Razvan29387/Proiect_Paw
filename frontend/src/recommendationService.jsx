@@ -1,5 +1,6 @@
 import axios from 'axios';
 
+// CORECȚIE: Folosim 'Recommandations' cu 'R' mare pentru a se potrivi cu backend-ul
 const API_URL = 'http://localhost:8080/api/v1/Recommandations';
 
 // Funcție pentru a prelua lista de orașe

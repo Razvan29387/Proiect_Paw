@@ -5,7 +5,7 @@
     margin: 0 auto;
 }
 
-/* Stiluri pentru noul formular de selecție */
+/* Stiluri pentru noul formular de căutare */
 .city-selector-form {
     display: flex;
     justify-content: center;
@@ -14,18 +14,19 @@
     margin-top: 2rem;
 }
 
-.city-select {
+.city-search-input {
     padding: 0.8rem;
     font-size: 1rem;
     border: 1px solid #ccc;
     border-radius: 5px;
-    min-width: 200px; /* Lățime minimă pentru dropdown */
+    width: 100%;
+    max-width: 400px;
 }
 
 .get-recs-button {
     padding: 0.8rem 1.5rem;
     font-size: 1rem;
-    background-color: #28a745; /* Verde pentru acțiune */
+    background-color: #007bff; /* Albastru pentru search */
     color: white;
     border: none;
     border-radius: 5px;
@@ -34,7 +35,7 @@
 }
 
 .get-recs-button:hover {
-    background-color: #218838;
+    background-color: #0056b3;
 }
 
 /* Stiluri existente, încă relevante */
@@ -73,7 +74,29 @@
     color: #343a40;
 }
 
+.category-tag {
+    font-size: 0.8em;
+    color: #6c757d;
+    font-weight: normal;
+}
+
+.wiki-link {
+    color: #007bff;
+    text-decoration: none;
+    font-weight: bold;
+}
+
+.wiki-link:hover {
+    text-decoration: underline;
+}
+
 .error-message {
     color: #dc3545;
     font-weight: bold;
+}
+
+.map-container {
+    border: 1px solid #ccc;
+    border-radius: 8px;
+    overflow: hidden;
 }

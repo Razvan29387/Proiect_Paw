@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import authService from './authService.jsx';
 import './Login.css';
 
-// Componenta primește acum o funcție ca prop
+// Componenta primește acum funcția onLoginSuccess ca prop
 const Login = ({ onLoginSuccess }) => {
     const [userName, setUserName] = useState('');
     const [password, setPassword] = useState('');
@@ -11,7 +11,7 @@ const Login = ({ onLoginSuccess }) => {
         e.preventDefault();
         try {
             await authService.login(userName, password);
-            // Apelează funcția din App.jsx pentru a notifica succesul
+            // CORECȚIE: Apelăm funcția din App.jsx pentru a gestiona navigarea
             onLoginSuccess();
         } catch (error) {
             console.error('Login failed:', error);
