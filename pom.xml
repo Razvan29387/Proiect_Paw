@@ -49,6 +49,12 @@
             <artifactId>spring-boot-starter-security</artifactId>
         </dependency>
 
+        <!-- Integrare WebSockets (necesar pentru cerința WebRTC/WebSockets) -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-websocket</artifactId>
+        </dependency>
+
         <!-- NOUA DEPENDENȚĂ SUGERATĂ DE TINE -->
         <dependency>
             <groupId>com.google.genai</groupId>

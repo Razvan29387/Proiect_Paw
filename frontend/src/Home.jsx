@@ -1,13 +1,23 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import recommendationService from './recommendationService.jsx';
-import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, Popup, useMap, useMapEvents } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
+import SockJS from 'sockjs-client';
+import Stomp from 'stompjs';
 import './Home.css';
 
-// Fix pentru iconițele Leaflet care nu se încarcă corect în React
 import icon from 'leaflet/dist/images/marker-icon.png';
 import iconShadow from 'leaflet/dist/images/marker-shadow.png';
+
+const userIcon = new L.Icon({
+    iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-red.png',
+    shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
+    iconSize: [25, 41],
+    iconAnchor: [12, 41],
+    popupAnchor: [1, -34],
+    shadowSize: [41, 41]
+});
 
 let DefaultIcon = L.icon({
     iconUrl: icon,
@@ -18,10 +28,28 @@ let DefaultIcon = L.icon({
 
 L.Marker.prototype.options.icon = DefaultIcon;
 
-// Componentă pentru a centra harta dinamic
+const createCustomIcon = (imageUrl) => {
+    if (!imageUrl) return DefaultIcon;
+    return L.divIcon({
+        className: 'custom-marker-container',
+        html: `<div class="custom-marker-pin"><img src="${imageUrl}" alt="marker" /></div>`,
+        iconSize: [40, 40],
+        iconAnchor: [20, 46],
+        popupAnchor: [0, -42]
+    });
+};
+
 function ChangeView({ center, zoom }) {
     const map = useMap();
     map.setView(center, zoom);
+    return null;
+}
+
+function LocationEvents({ onLocationSelect, onLocationClear }) {
+    useMapEvents({
+        click(e) { onLocationSelect(e.latlng); },
+        contextmenu(e) { onLocationClear(); }
+    });
     return null;
 }
 
@@ -31,182 +59,46 @@ const Home = () => {
     const [recommendations, setRecommendations] = useState([]);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
-    
-    // Stare pentru hartă
-    const [mapCenter, setMapCenter] = useState([46.0, 25.0]); // Centrul implicit (România)
+    const [mapCenter, setMapCenter] = useState([46.0, 25.0]);
     const [mapZoom, setMapZoom] = useState(6);
     const [markers, setMarkers] = useState([]);
+    const [userLocation, setUserLocation] = useState(null);
+    const [notification, setNotification] = useState(null);
+    const [notificationsHistory, setNotificationsHistory] = useState([]);
+    const [showNotifications, setShowNotifications] = useState(false);
+    const [unreadCount, setUnreadCount] = useState(0);
+    const stompClientRef = useRef(null);
 
-    const handleSearch = (e) => {
-        e.preventDefault();
-        if (!searchQuery.trim()) {
-            setError('Please enter a city name.');
-            return;
-        }
-        setCityToView(searchQuery);
-        setLoading(true);
-        setError('');
-        setMarkers([]); // Resetăm marker-ele
-        
-        recommendationService.getRecommendationsForCity(searchQuery)
-            .then(async (response) => {
-                const recs = response.data;
-                setRecommendations(recs);
-                setLoading(false);
-
-                // 1. Găsim coordonatele orașului pentru a centra harta
-                try {
-                    const cityCoords = await geocodeLocation(searchQuery);
-                    if (cityCoords) {
-                        setMapCenter([cityCoords.lat, cityCoords.lon]);
-                        setMapZoom(13);
-                    }
-                } catch (err) {
-                    console.error("Could not geocode city:", err);
+    useEffect(() => {
+        const socket = new SockJS('http://localhost:8080/ws');
+        const stompClient = Stomp.over(socket);
+        stompClientRef.current = stompClient;
+        stompClient.debug = null;
+        stompClient.connect({}, () => {
+            stompClient.subscribe('/topic/alerts', (message) => {
+                if (message.body) {
+                    setNotification(message.body);
+                    setTimeout(() => setNotification(null), 5000);
+                    setNotificationsHistory(prev => [message.body, ...prev]);
+                    setUnreadCount(prev => prev + 1);
                 }
-
-                // 2. Procesăm fiecare recomandare: geocodare + căutare Wikipedia
-                for (let i = 0; i < recs.length; i++) {
-                    const rec = recs[i];
-                    
-                    // Delay pentru a nu suprasolicita API-urile
-                    await new Promise(r => setTimeout(r, 1100));
-                    
-                    // A. Geocodare
-                    let coords = null;
-                    try {
-                        // Încercăm cu orașul inclus pentru precizie
-                        coords = await geocodeLocation(`${rec.name}, ${searchQuery}`);
-                        if (!coords) {
-                             await new Promise(r => setTimeout(r, 1100));
-                             coords = await geocodeLocation(rec.name);
-                        }
-                    } catch (err) {
-                        console.error(`Could not geocode ${rec.name}:`, err);
-                    }
-
-                    // B. Căutare Wikipedia (doar pentru atracții turistice)
-                    let wikiLink = null;
-                    // Excludem explicit categoriile de cazare și masă
-                    const excludedCategories = ['Restaurant', 'Guesthouse', 'Hotel'];
-                    
-                    if (!excludedCategories.includes(rec.category)) {
-                        try {
-                            // Trimitem numele atracției și orașul pentru validare
-                            wikiLink = await searchWikipedia(rec.name, searchQuery);
-                        } catch (err) {
-                            console.error(`Could not find Wikipedia link for ${rec.name}:`, err);
-                        }
-                    }
-
-                    // Actualizăm starea marker-elor
-                    if (coords) {
-                        setMarkers(prev => [...prev, { ...rec, lat: coords.lat, lon: coords.lon, wikipediaLink: wikiLink }]);
-                    }
-                    
-                    // Actualizăm și lista principală cu link-ul wiki găsit
-                    if (wikiLink) {
-                        setRecommendations(prevRecs => 
-                            prevRecs.map(r => r.name === rec.name ? { ...r, wikipediaLink: wikiLink } : r)
-                        );
-                    }
-                }
-            })
-            .catch(error => {
-                console.error(`Failed to fetch recommendations for ${searchQuery}:`, error);
-                
-                if (error.response && error.response.data && error.response.data.message) {
-                    setError(error.response.data.message);
-                } else {
-                    setError(`Could not load recommendations for ${searchQuery}.`);
-                }
-                
-                setLoading(false);
-                setCityToView(null);
             });
+        }, (error) => {
+            console.error('WebSocket connection error:', error);
+        });
+        return () => { if (stompClient && stompClient.connected) stompClient.disconnect(); };
+    }, []);
+
+    const toggleNotifications = () => {
+        setShowNotifications(!showNotifications);
+        if (!showNotifications) setUnreadCount(0);
     };
 
-    const geocodeLocation = async (locationName) => {
-        try {
-            const response = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(locationName)}`);
-            const data = await response.json();
-            if (data && data.length > 0) {
-                return { lat: parseFloat(data[0].lat), lon: parseFloat(data[0].lon) };
-            }
-            return null;
-        } catch (error) {
-            console.error("Geocoding error:", error);
-            return null;
-        }
+    const clearNotifications = () => {
+        setNotificationsHistory([]);
+        setUnreadCount(0);
+        setShowNotifications(false);
     };
-
-    // Funcție îmbunătățită pentru căutare Wikipedia
-    const searchWikipedia = async (placeName, cityName) => {
-        // 1. Încercăm întâi pe Wikipedia în Engleză (en) - sursa principală acum
-        // Căutăm "Place Name City Name" pentru precizie maximă
-        let link = await fetchWikiLink('en', `${placeName} ${cityName}`, placeName, cityName);
-        
-        // 2. Dacă nu găsim, încercăm doar cu numele locului, dar validăm cu orașul
-        if (!link) {
-            link = await fetchWikiLink('en', placeName, placeName, cityName);
-        }
-
-        // 3. Fallback pe Română dacă nu găsim nimic în Engleză
-        if (!link) {
-             link = await fetchWikiLink('ro', `${placeName} ${cityName}`, placeName, cityName);
-        }
-
-        return link;
-    };
-
-    const fetchWikiLink = async (lang, searchTerm, originalName, cityName) => {
-        try {
-            // Cerem primele 10 rezultate pentru a avea o bază mai mare de selecție
-            const searchUrl = `https://${lang}.wikipedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(searchTerm)}&srlimit=10&format=json&origin=*`;
-            const response = await fetch(searchUrl);
-            const data = await response.json();
-            
-            if (data.query && data.query.search && data.query.search.length > 0) {
-                const results = data.query.search;
-                
-                // Pregătim cuvintele cheie
-                const nameKeywords = originalName.toLowerCase().split(' ').filter(w => w.length > 3);
-                const cityLower = cityName.toLowerCase();
-
-                // FILTRARE STRICTĂ
-                const relevantResults = results.filter(res => {
-                    const titleLower = res.title.toLowerCase();
-                    // Curățăm snippet-ul de tag-uri HTML (ex: <span class="searchmatch">)
-                    const snippetLower = res.snippet.replace(/<[^>]*>?/gm, '').toLowerCase();
-                    
-                    // 1. Verificăm dacă titlul conține cuvinte din numele atracției
-                    const hasNameMatch = nameKeywords.length === 0 || nameKeywords.some(k => titleLower.includes(k));
-                    
-                    // 2. VERIFICARE CRITICĂ: Orașul trebuie să apară în Titlu SAU în Snippet (descriere scurtă)
-                    // Aceasta previne confuziile între orașe (ex: Turnul Phoenix din Baia Mare vs Shanghai)
-                    const hasCityContext = titleLower.includes(cityLower) || snippetLower.includes(cityLower);
-
-                    return hasNameMatch && hasCityContext;
-                });
-
-                // Dacă nu avem niciun rezultat care să menționeze orașul, returnăm null
-                if (relevantResults.length === 0) {
-                    return null;
-                }
-
-                // Sortăm candidații validați după numărul de cuvinte (wordcount) descrescător
-                const sortedCandidates = relevantResults.sort((a, b) => b.wordcount - a.wordcount);
-                
-                // Luăm titlul celui mai lung articol validat
-                const bestPage = sortedCandidates[0];
-                
-                return `https://${lang}.wikipedia.org/wiki/${encodeURIComponent(bestPage.title)}`;
-            }
-            return null;
-        } catch (error) {
-            return null;
-        }
-    }
 
     const handleBackClick = () => {
         setCityToView(null);
@@ -215,26 +107,230 @@ const Home = () => {
         setMarkers([]);
         setMapZoom(6);
         setMapCenter([46.0, 25.0]);
+        setUserLocation(null);
+    };
+
+    const handleMapClick = async (latlng) => {
+        if (!cityToView) return;
+        setUserLocation(latlng);
+        try {
+            const response = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${latlng.lat}&lon=${latlng.lng}`);
+            const data = await response.json();
+            const locationName = data.display_name.split(',')[0];
+            if (stompClientRef.current && stompClientRef.current.connected) {
+                stompClientRef.current.send("/app/updateLocation", {}, JSON.stringify({
+                    city: cityToView, locationName: locationName, latitude: latlng.lat, longitude: latlng.lng
+                }));
+            }
+        } catch (err) {}
+    };
+
+    const calculateDistance = (lat1, lon1, lat2, lon2) => {
+        const R = 6371; 
+        const dLat = (lat2 - lat1) * Math.PI / 180;
+        const dLon = (lon2 - lon1) * Math.PI / 180;
+        const a = Math.sin(dLat/2) * Math.sin(dLat/2) + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLon/2) * Math.sin(dLon/2);
+        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+        return R * c;
+    };
+
+    const handleSearch = (e) => {
+        e.preventDefault();
+        if (!searchQuery.trim()) return;
+        setCityToView(searchQuery);
+        setLoading(true);
+        setError('');
+        setMarkers([]);
+        setRecommendations([]);
+
+        recommendationService.getRecommendationsForCity(searchQuery)
+            .then(async (response) => {
+                const recs = response.data;
+                setRecommendations(recs.map(r => ({...r, hasLocation: false})));
+                setLoading(false);
+                
+                // Încercăm să centrăm harta pe oraș
+                const cityData = await geocodeCity(searchQuery);
+                let cityCoords = null;
+                if (cityData) {
+                    cityCoords = { lat: cityData.lat, lon: cityData.lon };
+                    setMapCenter([cityData.lat, cityData.lon]);
+                    setMapZoom(13);
+                }
+
+                for (const rec of recs) {
+                    await new Promise(r => setTimeout(r, 100));
+                    
+                    let wikiData = null;
+                    if (rec.category === 'Tourist Attraction') {
+                        wikiData = await searchWikipedia(rec.name, searchQuery, rec.englishName, cityCoords);
+                    }
+
+                    const geoData = await geocodeLocation(`${rec.name}, ${searchQuery}`);
+                    let finalLat = geoData?.lat || wikiData?.lat;
+                    let finalLon = geoData?.lon || wikiData?.lon;
+                    
+                    // Folosim numele local (rec.name) ca prioritate, sau cel oficial de pe hartă
+                    let finalName = rec.name || geoData?.officialName;
+
+                    if (cityCoords && finalLat && finalLon) {
+                        const dist = calculateDistance(cityCoords.lat, cityCoords.lon, finalLat, finalLon);
+                        if (dist > 20) {
+                            finalLat = null;
+                            finalLon = null;
+                        }
+                    }
+
+                    if (finalLat && finalLon) {
+                        setMarkers(prev => [...prev, { 
+                            ...rec, 
+                            name: finalName, 
+                            lat: finalLat, 
+                            lon: finalLon, 
+                            wikipediaLink: wikiData?.wikiUrl, 
+                            imageUrl: wikiData?.imageUrl 
+                        }]);
+                        
+                        setRecommendations(prevRecs => 
+                            prevRecs.map(r => r.name === rec.name ? { 
+                                ...r, 
+                                name: finalName, 
+                                hasLocation: true,
+                                wikipediaLink: wikiData?.wikiUrl,
+                                description: wikiData?.extract || r.description
+                            } : r)
+                        );
+                    } else {
+                        setRecommendations(prevRecs => 
+                            prevRecs.map(r => r.name === rec.name ? { 
+                                ...r, 
+                                hasLocation: false,
+                                wikipediaLink: wikiData?.wikiUrl,
+                                description: wikiData?.extract || r.description
+                            } : r)
+                        );
+                    }
+                }
+            })
+            .catch(err => {
+                setLoading(false);
+                setCityToView(null);
+            });
+    };
+
+    const geocodeCity = async (cityName) => {
+        const res = await fetch(`https://photon.komoot.io/api/?q=${encodeURIComponent(cityName)}&limit=1`);
+        const data = await res.json();
+        if (data.features.length > 0) {
+            const coords = data.features[0].geometry.coordinates;
+            return { lat: coords[1], lon: coords[0] };
+        }
+        return null;
+    };
+
+    const geocodeLocation = async (q) => {
+        try {
+            const res = await fetch(`https://photon.komoot.io/api/?q=${encodeURIComponent(q)}&limit=1`);
+            const data = await res.json();
+            if (data.features.length > 0) {
+                const props = data.features[0].properties;
+                const coords = data.features[0].geometry.coordinates;
+                return { 
+                    lat: coords[1], 
+                    lon: coords[0],
+                    officialName: props.name 
+                };
+            }
+        } catch (e) {}
+        return null;
+    };
+
+    const searchWikipedia = async (name, city, englishName, cityCoords) => {
+        let res = await fetch(`https://ro.wikipedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(name + " " + city)}&format=json&origin=*`);
+        let data = await res.json();
+        
+        if (!data.query?.search?.length) {
+             res = await fetch(`https://ro.wikipedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(name)}&format=json&origin=*`);
+             data = await res.json();
+        }
+
+        if (data.query?.search?.length > 0) {
+            const candidates = data.query.search.slice(0, 3);
+            const nameLower = name.toLowerCase();
+            
+            for (const candidate of candidates) {
+                const titleLower = candidate.title.toLowerCase();
+                if (titleLower === city.toLowerCase()) continue;
+
+                const details = await fetchWikiDetails(candidate.title);
+                const extractLower = details.extract ? details.extract.toLowerCase() : "";
+
+                if (nameLower.includes("ortodox") && (titleLower.includes("catolic") || extractLower.includes("catolic") || extractLower.includes("reformat"))) continue;
+                if (nameLower.includes("catolic") && (titleLower.includes("ortodox") || extractLower.includes("ortodox"))) continue;
+
+                if (details.lat && details.lon && cityCoords) {
+                    const dist = calculateDistance(cityCoords.lat, cityCoords.lon, details.lat, details.lon);
+                    if (dist > 20) continue;
+                }
+                
+                return { wikiUrl: `https://ro.wikipedia.org/wiki/${encodeURIComponent(candidate.title)}`, ...details };
+            }
+            
+            // Fallback
+            let bestPage = data.query.search[0];
+            if (bestPage.title.toLowerCase() === city.toLowerCase()) {
+                if (data.query.search.length > 1) bestPage = data.query.search[1];
+                else return null;
+            }
+            const details = await fetchWikiDetails(bestPage.title);
+            if (details.lat && details.lon && cityCoords) {
+                const dist = calculateDistance(cityCoords.lat, cityCoords.lon, details.lat, details.lon);
+                if (dist > 20) return null;
+            }
+            return { wikiUrl: `https://ro.wikipedia.org/wiki/${encodeURIComponent(bestPage.title)}`, ...details };
+        }
+        return null;
+    };
+
+    const fetchWikiDetails = async (title) => {
+        const res = await fetch(`https://ro.wikipedia.org/w/api.php?action=query&titles=${encodeURIComponent(title)}&prop=pageimages|coordinates|extracts&exintro=1&explaintext=1&format=json&pithumbsize=300&origin=*`);
+        const data = await res.json();
+        const page = Object.values(data.query.pages)[0];
+        return {
+            imageUrl: page.thumbnail?.source,
+            lat: page.coordinates?.[0].lat,
+            lon: page.coordinates?.[0].lon,
+            extract: page.extract ? page.extract.substring(0, 200) + "..." : null
+        };
     };
 
     return (
         <div className="home-container">
-            <h1>Welcome to the AI-Powered Travel Guide</h1>
-            
+            <div className="header-container">
+                <h1>AI Travel Guide</h1>
+                <div className="notification-bell-container">
+                    <button className="notification-bell" onClick={toggleNotifications}>🔔{unreadCount > 0 && <span className="notification-badge">{unreadCount}</span>}</button>
+                    {showNotifications && (
+                        <div className="notifications-dropdown">
+                            <div className="notifications-header">
+                                <h3>Notifications</h3>
+                                {notificationsHistory.length > 0 && (
+                                    <button onClick={clearNotifications} className="clear-notifications-btn">Clear All</button>
+                                )}
+                            </div>
+                            {notificationsHistory.length > 0 ? <ul>{notificationsHistory.map((m, i) => <li key={i} className="notification-item">{m}</li>)}</ul> : <p className="no-notifications">No notifications yet.</p>}
+                        </div>
+                    )}
+                </div>
+            </div>
+            {notification && <div className="websocket-notification">🔔 {notification}</div>}
             {error && <p className="error-message">{error}</p>}
-            {loading && <p>Loading recommendations, map data, and Wikipedia links...</p>}
-
+            {loading && <p>Loading...</p>}
             {!cityToView ? (
                 <div>
                     <h2>Search for a city to get recommendations:</h2>
                     <form onSubmit={handleSearch} className="city-selector-form">
-                        <input
-                            type="text"
-                            value={searchQuery}
-                            onChange={(e) => setSearchQuery(e.target.value)}
-                            placeholder="e.g., Paris, Tokyo, Rome"
-                            className="city-search-input"
-                        />
+                        <input type="text" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} placeholder="e.g., Paris, Tokyo, Rome" className="city-search-input" />
                         <button type="submit" className="get-recs-button">Search</button>
                     </form>
                 </div>
@@ -242,48 +338,47 @@ const Home = () => {
                 <div>
                     <button onClick={handleBackClick} className="back-button">← New Search</button>
                     <h2>Recommendations for {cityToView}</h2>
-                    
                     <div className="map-container" style={{ height: '400px', marginBottom: '20px' }}>
-                        <MapContainer center={mapCenter} zoom={mapZoom} scrollWheelZoom={false} style={{ height: '100%', width: '100%' }}>
+                        <MapContainer center={mapCenter} zoom={mapZoom} style={{ height: '100%' }}>
                             <ChangeView center={mapCenter} zoom={mapZoom} />
-                            <TileLayer
-                                attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-                                url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-                            />
-                            {markers.map((marker, index) => (
-                                <Marker key={index} position={[marker.lat, marker.lon]}>
-                                    <Popup>
-                                        <strong>{marker.name}</strong><br />
-                                        <span className="category-tag">{marker.category}</span><br />
-                                        {marker.wikipediaLink && (
-                                            <a href={marker.wikipediaLink} target="_blank" rel="noopener noreferrer">
-                                                Wikipedia
-                                            </a>
-                                        )}
+                            <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
+                            <LocationEvents onLocationSelect={handleMapClick} onLocationClear={() => setUserLocation(null)} />
+                            {userLocation && <Marker position={userLocation} icon={userIcon}><Popup>You are here!</Popup></Marker>}
+                            {markers.map((m, i) => (
+                                <Marker 
+                                    key={i} 
+                                    position={[m.lat, m.lon]} 
+                                    icon={createCustomIcon(m.imageUrl)}
+                                >
+                                    <Popup className="custom-popup">
+                                        <div className="popup-content">
+                                            <strong>{m.name}</strong><br/>
+                                            {m.imageUrl && <img src={m.imageUrl} className="popup-image" alt="poi" />}
+                                            {/* VERIFICARE REDUNDANTĂ: Doar dacă e Tourist Attraction */}
+                                            {m.category === 'Tourist Attraction' && m.wikipediaLink && (
+                                                <div className="popup-link"><a href={m.wikipediaLink} target="_blank" rel="noopener noreferrer">Wikipedia</a></div>
+                                            )}
+                                        </div>
                                     </Popup>
                                 </Marker>
                             ))}
                         </MapContainer>
                     </div>
-
                     <div className="recommendations-list">
-                        {recommendations.length > 0 ? (
-                            recommendations.map((rec, index) => (
-                                <div key={rec.id || index} className="recommendation-card">
-                                    <h3>{rec.name} <span className="category-tag">({rec.category})</span></h3>
-                                    <p>{rec.description}</p>
-                                    {rec.wikipediaLink && (
-                                        <p>
-                                            <a href={rec.wikipediaLink} target="_blank" rel="noopener noreferrer" className="wiki-link">
-                                                Read more on Wikipedia
-                                            </a>
-                                        </p>
-                                    )}
-                                </div>
-                            ))
-                        ) : (
-                            !loading && <p>No recommendations found for this city.</p>
-                        )}
+                        {recommendations.map((rec, i) => (
+                            <div key={i} className="recommendation-card">
+                                <h3>
+                                    {rec.name} 
+                                    <span className="category-tag"> ({rec.category})</span>
+                                    {!rec.hasLocation && <span title="Location not found on map" style={{marginLeft: '10px', fontSize: '0.8em'}}>⚠️</span>}
+                                </h3>
+                                <p>{rec.description}</p>
+                                {/* VERIFICARE REDUNDANTĂ: Doar dacă e Tourist Attraction */}
+                                {rec.category === 'Tourist Attraction' && rec.wikipediaLink && (
+                                    <a href={rec.wikipediaLink} target="_blank" rel="noopener noreferrer" className="wiki-link">Read on Wikipedia</a>
+                                )}
+                            </div>
+                        ))}
                     </div>
                 </div>
             )}

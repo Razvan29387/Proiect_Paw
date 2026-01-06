@@ -5,6 +5,7 @@ import Register from './Register.jsx';
 import Home from './Home.jsx';
 import authService from './authService.jsx';
 import Cookies from 'js-cookie';
+import LiveRecommendations from "./components/LiveRecommendations.jsx";
 
 // CORECȚIE: PrivateRoute primește acum starea de autentificare ca prop
 const PrivateRoute = ({ children, isLoggedIn }) => {

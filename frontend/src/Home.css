@@ -5,6 +5,123 @@
     margin: 0 auto;
 }
 
+/* Header Container */
+.header-container {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 2rem;
+    position: relative;
+}
+
+.header-container h1 {
+    margin: 0;
+    font-size: 1.8rem;
+}
+
+/* Notification Bell Styles */
+.notification-bell-container {
+    position: relative;
+}
+
+.notification-bell {
+    background: none;
+    border: none;
+    font-size: 1.5rem;
+    cursor: pointer;
+    position: relative;
+    padding: 5px;
+    transition: transform 0.2s;
+}
+
+.notification-bell:hover {
+    transform: scale(1.1);
+}
+
+.notification-badge {
+    position: absolute;
+    top: 0;
+    right: 0;
+    background-color: #dc3545;
+    color: white;
+    font-size: 0.7rem;
+    font-weight: bold;
+    border-radius: 50%;
+    width: 18px;
+    height: 18px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.notifications-dropdown {
+    position: absolute;
+    top: 100%;
+    right: 0;
+    width: 300px;
+    background-color: white;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    z-index: 1001;
+    text-align: left;
+    max-height: 400px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+}
+
+.notifications-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 15px;
+    background-color: #f8f9fa;
+    border-bottom: 1px solid #eee;
+}
+
+.notifications-header h3 {
+    margin: 0;
+    font-size: 1rem;
+}
+
+.clear-notifications-btn {
+    background: none;
+    border: none;
+    color: #dc3545;
+    font-size: 0.8rem;
+    cursor: pointer;
+    font-weight: bold;
+}
+
+.clear-notifications-btn:hover {
+    text-decoration: underline;
+}
+
+.notifications-dropdown ul {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+
+.notification-item {
+    padding: 10px 15px;
+    border-bottom: 1px solid #eee;
+    font-size: 0.9rem;
+    color: #333;
+}
+
+.notification-item:last-child {
+    border-bottom: none;
+}
+
+.no-notifications {
+    padding: 15px;
+    text-align: center;
+    color: #888;
+    margin: 0;
+}
+
 /* Stiluri pentru noul formular de căutare */
 .city-selector-form {
     display: flex;
@@ -99,4 +216,96 @@
     border: 1px solid #ccc;
     border-radius: 8px;
     overflow: hidden;
+    z-index: 1; /* Asigură că harta e sub notificări */
+}
+
+/* Stiluri pentru notificarea WebSocket (Toast) */
+.websocket-notification {
+    position: fixed;
+    top: 80px;
+    right: 20px;
+    background-color: #28a745;
+    color: white;
+    padding: 15px 20px;
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    z-index: 1000;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    animation: slideIn 0.5s ease-out;
+    max-width: 300px;
+    text-align: left;
+}
+
+@keyframes slideIn {
+    from { transform: translateX(100%); opacity: 0; }
+    to { transform: translateX(0); opacity: 1; }
+}
+
+/* --- FIX POPUP --- */
+.custom-popup .leaflet-popup-content-wrapper {
+    border-radius: 8px;
+    padding: 0;
+    overflow: hidden;
+}
+
+.custom-popup .leaflet-popup-content {
+    margin: 15px !important; /* Spațiu pentru butonul X */
+    width: 220px !important;
+    line-height: 1.4;
+}
+
+.custom-popup a.leaflet-popup-close-button {
+    top: 5px;
+    right: 5px;
+    color: #333;
+    font-size: 18px;
+    z-index: 10;
+}
+
+.popup-content {
+    text-align: center;
+}
+
+.popup-image {
+    width: 100%;
+    height: 140px;
+    object-fit: cover;
+    border-radius: 4px;
+    margin: 8px 0;
+    display: block;
+}
+
+/* --- STILURI PENTRU MARKER CU POZĂ --- */
+.custom-marker-pin {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    border: 3px solid white;
+    box-shadow: 0 3px 6px rgba(0,0,0,0.4);
+    background-color: white;
+    overflow: hidden;
+    position: relative;
+}
+
+.custom-marker-pin img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+}
+
+/* Săgeata de sub marker (opțional, pentru aspect de pin) */
+.custom-marker-pin::after {
+    content: '';
+    position: absolute;
+    bottom: -6px;
+    left: 50%;
+    transform: translateX(-50%) rotate(45deg);
+    width: 10px;
+    height: 10px;
+    background-color: white;
+    z-index: -1;
+    box-shadow: 2px 2px 2px rgba(0,0,0,0.3);
 }
