@@ -13,9 +13,18 @@ const getRecommendationsForCity = (cityName) => {
     return axios.get(`${API_URL}/${cityName}`);
 };
 
+// Funcție nouă pentru a cere sugestii specifice unei locații
+const getSuggestionsForLocation = (locationName, cityName) => {
+    return axios.post(`${API_URL}/suggestions`, {
+        locationName,
+        cityName
+    });
+};
+
 const recommendationService = {
     getCities,
     getRecommendationsForCity,
+    getSuggestionsForLocation
 };
 
 export default recommendationService;
