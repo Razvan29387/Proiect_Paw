@@ -1,4 +1,4 @@
-package com.example.demo.Config;
+/*package com.example.demo.Config;
 
 import com.example.demo.Entity.City;
 import com.example.demo.Repository.CityRepository;
@@ -52,3 +52,4 @@ public class DataInitializer {
         };
     }
 }
+*/
