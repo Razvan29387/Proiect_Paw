@@ -46,4 +46,20 @@ public class RecommandationController {
 
         return ResponseEntity.ok(recommandations);
     }
+
+    /**
+     * Endpoint pentru a cere sugestii specifice unei locații (pin pe hartă).
+     * Trigger-uiește un proces asincron care va trimite notificări prin WebSocket.
+     */
+    @PostMapping("/suggestions")
+    public ResponseEntity<Void> getSuggestionsForLocation(@RequestBody Map<String, String> payload) {
+        String locationName = payload.get("locationName");
+        String cityName = payload.get("cityName");
+        
+        if (locationName != null && cityName != null) {
+            recommandationService.getSuggestionsForLocation(locationName, cityName);
+        }
+        
+        return ResponseEntity.accepted().build();
+    }
 }

@@ -14,8 +14,10 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
+import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
+import org.springframework.web.util.UriComponentsBuilder;
 
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
@@ -34,6 +36,7 @@ public class RecommandationService {
     private final RecommendationRepository recommendationRepository;
     private final RestTemplate restTemplate;
     private final ObjectMapper objectMapper;
+    private final SimpMessagingTemplate messagingTemplate; // Injectăm template-ul pentru WebSocket
     private final String groqApiKey;
     private final String groqModel = "openai/gpt-oss-120b";
 

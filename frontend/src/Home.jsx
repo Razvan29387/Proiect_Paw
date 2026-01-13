@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import recommendationService from './recommendationService.jsx';
 import { MapContainer, TileLayer, Marker, Popup, useMap, useMapEvents } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
@@ -6,6 +6,8 @@ import L from 'leaflet';
 import SockJS from 'sockjs-client';
 import Stomp from 'stompjs';
 import './Home.css';
+import SockJS from 'sockjs-client';
+import { Stomp } from '@stomp/stompjs';
 
 import icon from 'leaflet/dist/images/marker-icon.png';
 import iconShadow from 'leaflet/dist/images/marker-shadow.png';
@@ -55,6 +57,19 @@ function LocationEvents({ onLocationSelect, onLocationClear }) {
     useMapEvents({
         click(e) { onLocationSelect(e.latlng); },
         contextmenu(e) { onLocationClear(); }
+    });
+    return null;
+}
+
+// Componentă pentru a gestiona click-urile pe hartă
+function MapClickHandler({ onMapClick, onMapRightClick }) {
+    useMapEvents({
+        click: (e) => {
+            onMapClick(e.latlng);
+        },
+        contextmenu: (e) => { // Click dreapta
+            onMapRightClick(e);
+        }
     });
     return null;
 }
