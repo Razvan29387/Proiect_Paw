@@ -2,7 +2,6 @@ import React, { useState } from 'react';
 import authService from './authService.jsx';
 import './Login.css';
 
-// Componenta primește acum funcția onLoginSuccess ca prop
 const Login = ({ onLoginSuccess }) => {
     const [userName, setUserName] = useState('');
     const [password, setPassword] = useState('');
@@ -11,7 +10,6 @@ const Login = ({ onLoginSuccess }) => {
         e.preventDefault();
         try {
             await authService.login(userName, password);
-            // CORECȚIE: Apelăm funcția din App.jsx pentru a gestiona navigarea
             onLoginSuccess();
         } catch (error) {
             console.error('Login failed:', error);
@@ -21,11 +19,23 @@ const Login = ({ onLoginSuccess }) => {
 
     return (
         <div className="login-container">
-            <h2>Login</h2>
+            <h2>Welcome Back</h2>
             <form className="login-form" onSubmit={handleLogin}>
-                <input type="text" placeholder="Username" value={userName} onChange={(e) => setUserName(e.target.value)} required />
-                <input type="password" placeholder="Password" value={password} onChange={(e) => setPassword(e.target.value)} required />
-                <button type="submit">Login</button>
+                <input 
+                    type="text" 
+                    placeholder="Username" 
+                    value={userName} 
+                    onChange={(e) => setUserName(e.target.value)} 
+                    required 
+                />
+                <input 
+                    type="password" 
+                    placeholder="Password" 
+                    value={password} 
+                    onChange={(e) => setPassword(e.target.value)} 
+                    required 
+                />
+                <button type="submit">Log In</button>
             </form>
         </div>
     );

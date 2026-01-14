@@ -1,4 +1,3 @@
-
 package com.example.demo.Service;
 
 import com.example.demo.DTO.RecommandationDto;
@@ -54,22 +53,25 @@ public class RecommandationService {
         String normalizedCityName = cityName.trim();
         String simpleCityName = extractSimpleCityName(normalizedCityName);
 
+        // 1. Asigurăm că orașul există în DB (pentru a putea salva recomandările ulterior)
         City city = saveCityIfNotExists(normalizedCityName);
 
-        // PASUL 1: AI-ul generează CELE MAI POPULARE locuri (pe baza cunoștințelor sale)
+        // 2. ÎNTOTDEAUNA interogăm AI-ul pentru recomandări proaspete
+        // Nu verificăm DB-ul pentru a returna date existente.
         List<RecommandationDto> aiPopularPlaces = fetchMostPopularFromAI(simpleCityName);
 
-        // PASUL 2: Verificăm fiecare loc cu Nominatim/Photon pentru coordonate REALE
+        // 3. Verificăm existența reală și obținem coordonatele
         List<RecommandationDto> verifiedPlaces = verifyAndGetCoordinates(aiPopularPlaces, simpleCityName);
 
-        // PASUL 3: Adăugăm date Wikipedia și salvăm
-        List<RecommandationDto> finalSavedList = new ArrayList<>();
+        // 4. Îmbogățim cu date Wikipedia și SALVĂM în DB (pentru istoric/analiză viitoare)
+        List<RecommandationDto> finalResultList = new ArrayList<>();
 
         for (RecommandationDto dto : verifiedPlaces) {
             String wikiLink = null;
             String imageUrl = null;
             String description = dto.description();
 
+            // Căutăm date extra pe Wikipedia doar pentru atracții turistice
             if ("Tourist Attraction".equals(dto.category())) {
                 WikiData wikiData = searchWikipediaData(dto.name(), simpleCityName);
                 if (wikiData != null) {
@@ -81,15 +83,17 @@ public class RecommandationService {
                 }
             }
 
+            // SALVĂM în baza de date (sau actualizăm dacă există deja)
             saveRecommendation(dto, city, wikiLink, imageUrl, description);
 
-            finalSavedList.add(new RecommandationDto(
+            // Adăugăm în lista finală ce va fi returnată utilizatorului
+            finalResultList.add(new RecommandationDto(
                     dto.id(), dto.name(), dto.englishName(), description, dto.category(),
                     dto.lat(), dto.lon(), wikiLink, imageUrl
             ));
         }
 
-        return finalSavedList;
+        return finalResultList;
     }
 
     /**
@@ -365,5 +369,36 @@ public class RecommandationService {
     }
 
     public String getCityNotification(String cityName) { return "Welcome to " + cityName; }
-    public String getLiveRecommendation(UserLocationDto location) { return "Explore " + location.locationName(); }
+    
+    // MODIFICARE: Folosim AI-ul pentru a genera un mesaj personalizat și interesant
+    public String getLiveRecommendation(UserLocationDto location) {
+        String prompt = String.format(
+            "You are a local travel guide. The user is currently at coordinates (lat: %f, lon: %f) near '%s' in '%s'.\n" +
+            "Generate a SHORT, EXCITING, and REAL-TIME notification (max 1 sentence) suggesting a nearby hidden gem, a fun fact about the location, or a quick activity.\n" +
+            "Do NOT just say 'Welcome to...'. Be specific and engaging.\n" +
+            "Example: 'Did you know the oldest cafe in the city is just around the corner? Check out Cafe Central!'",
+            location.latitude(), location.longitude(), location.locationName(), location.city()
+        );
+        
+        try {
+            // Reutilizăm logica de apelare Groq, dar adaptată pentru un singur string
+            String apiUrl = "https://api.groq.com/openai/v1/chat/completions";
+            HttpHeaders headers = new HttpHeaders();
+            headers.setContentType(MediaType.APPLICATION_JSON);
+            headers.setBearerAuth(this.groqApiKey);
+            ObjectNode requestBody = objectMapper.createObjectNode();
+            requestBody.put("model", this.groqModel);
+            requestBody.put("temperature", 0.7); // Mai creativ
+            ArrayNode messages = requestBody.putArray("messages");
+            messages.addObject().put("role", "user").put("content", prompt);
+            
+            HttpEntity<String> entity = new HttpEntity<>(requestBody.toString(), headers);
+            String response = restTemplate.postForObject(apiUrl, entity, String.class);
+            JsonNode content = objectMapper.readTree(response).path("choices").get(0).path("message").path("content");
+            
+            return content.asText().replace("\"", "").trim();
+        } catch (Exception e) {
+            return "Explore the hidden gems around " + location.locationName() + "!";
+        }
+    }
 }

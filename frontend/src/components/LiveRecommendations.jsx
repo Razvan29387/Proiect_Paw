@@ -1,40 +1,14 @@
-import React, { useState, useEffect, useRef } from 'react';
-import SockJS from 'sockjs-client';
-import Stomp from 'stompjs';
-import './LiveRecommendations.css'; // Vom crea și un CSS pentru stilizare
+import React, { useState, useEffect } from 'react';
+import './LiveRecommendations.css';
 
-const LiveRecommendations = () => {
+const LiveRecommendations = ({ newNotification }) => {
     const [notifications, setNotifications] = useState([]);
-    const stompClientRef = useRef(null);
 
     useEffect(() => {
-        // Conectare la WebSocket
-        const socket = new SockJS('http://localhost:8080/ws');
-        const stompClient = Stomp.over(socket);
-        stompClientRef.current = stompClient;
-        
-        // Dezactivăm logurile de debug din consolă pentru curățenie
-        stompClient.debug = null;
-
-        stompClient.connect({}, () => {
-            console.log('LiveRecommendations: Connected to WebSocket');
-            
-            // Abonare la topicul de alerte
-            stompClient.subscribe('/topic/alerts', (message) => {
-                if (message.body) {
-                    addNotification(message.body);
-                }
-            });
-        }, (error) => {
-            console.error('LiveRecommendations: WebSocket connection error:', error);
-        });
-
-        return () => {
-            if (stompClient && stompClient.connected) {
-                stompClient.disconnect();
-            }
-        };
-    }, []);
+        if (newNotification) {
+            addNotification(newNotification.text);
+        }
+    }, [newNotification]);
 
     const addNotification = (message) => {
         const id = Date.now();

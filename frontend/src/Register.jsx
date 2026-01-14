@@ -1,22 +1,20 @@
 import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom'; // Pentru a redirecționa după înregistrare
+import { useNavigate } from 'react-router-dom';
 import authService from './authService.jsx';
-import './Login.css'; // Poți refolosi același CSS
+import './Register.css';
 
 const Register = () => {
     const [userName, setUserName] = useState('');
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
-    const navigate = useNavigate(); // Hook pentru navigare
+    const navigate = useNavigate();
 
     const handleRegister = async (e) => {
         e.preventDefault();
         try {
-            // CORECȚIE: Folosim 'signup' și ordinea corectă a argumentelor
-            // Lăsăm nume/prenume goale pentru moment, deoarece nu sunt în formular
             await authService.signup('', '', email, userName, password);
             alert('Registration successful! Please login.');
-            navigate('/login'); // Redirecționează către pagina de login
+            navigate('/login');
         } catch (error) {
             console.error('Registration failed:', error);
             alert('Registration failed. Try another username.');
@@ -24,13 +22,31 @@ const Register = () => {
     };
 
     return (
-        <div className="login-container">
-            <h2>Register</h2>
-            <form className="login-form" onSubmit={handleRegister}>
-                <input type="text" placeholder="Username" value={userName} onChange={(e) => setUserName(e.target.value)} required />
-                <input type="email" placeholder="Email" value={email} onChange={(e) => setEmail(e.target.value)} required />
-                <input type="password" placeholder="Password" value={password} onChange={(e) => setPassword(e.target.value)} required />
-                <button type="submit">Register</button>
+        <div className="signup-container">
+            <h2>Create Account</h2>
+            <form className="signup-form" onSubmit={handleRegister}>
+                <input 
+                    type="text" 
+                    placeholder="Username" 
+                    value={userName} 
+                    onChange={(e) => setUserName(e.target.value)} 
+                    required 
+                />
+                <input 
+                    type="email" 
+                    placeholder="Email Address" 
+                    value={email} 
+                    onChange={(e) => setEmail(e.target.value)} 
+                    required 
+                />
+                <input 
+                    type="password" 
+                    placeholder="Password" 
+                    value={password} 
+                    onChange={(e) => setPassword(e.target.value)} 
+                    required 
+                />
+                <button type="submit">Sign Up</button>
             </form>
         </div>
     );

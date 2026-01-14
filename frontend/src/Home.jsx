@@ -3,9 +3,8 @@ import recommendationService from './recommendationService.jsx';
 import { MapContainer, TileLayer, Marker, Popup, useMap, useMapEvents } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
-import SockJS from 'sockjs-client';
-import Stomp from 'stompjs';
 import './Home.css';
+import LiveRecommendations from './components/LiveRecommendations.jsx';
 
 import icon from 'leaflet/dist/images/marker-icon.png';
 import iconShadow from 'leaflet/dist/images/marker-shadow.png';
@@ -59,7 +58,8 @@ function LocationEvents({ onLocationSelect, onLocationClear }) {
     return null;
 }
 
-const Home = () => {
+// Home primește acum stompClient și latestNotification de la App
+const Home = ({ stompClient, latestNotification }) => {
     const [searchQuery, setSearchQuery] = useState('');
     const [cityToView, setCityToView] = useState(null);
     const [recommendations, setRecommendations] = useState([]);
@@ -69,65 +69,10 @@ const Home = () => {
     const [mapZoom, setMapZoom] = useState(4);
     const [markers, setMarkers] = useState([]);
     const [userLocation, setUserLocation] = useState(null);
-    const [notification, setNotification] = useState(null);
-    const [notificationsHistory, setNotificationsHistory] = useState([]);
-    const [showNotifications, setShowNotifications] = useState(false);
-    const [unreadCount, setUnreadCount] = useState(0);
-    const stompClientRef = useRef(null);
-    const isConnecting = useRef(false);
     
-    // REF PENTRU ANULARE CĂUTARE
     const currentSearchId = useRef(0);
 
-    useEffect(() => {
-        if (stompClientRef.current?.connected || isConnecting.current) return;
-
-        isConnecting.current = true;
-        const socket = new SockJS('http://localhost:8080/ws');
-        const stompClient = Stomp.over(socket);
-        stompClient.debug = null;
-
-        stompClient.connect({}, () => {
-            console.log('Connected to WebSocket');
-            isConnecting.current = false;
-            stompClientRef.current = stompClient;
-
-            stompClient.subscribe('/topic/alerts', (message) => {
-                if (message.body) {
-                    setNotification(message.body);
-                    setTimeout(() => setNotification(null), 5000);
-                    setNotificationsHistory(prev => [message.body, ...prev]);
-                    setUnreadCount(prev => prev + 1);
-                }
-            });
-        }, (error) => {
-            console.error('WebSocket connection error:', error);
-            isConnecting.current = false;
-        });
-
-        return () => {
-            if (stompClient && stompClient.connected) {
-                stompClient.disconnect();
-                stompClientRef.current = null;
-            }
-        };
-    }, []);
-
-    const toggleNotifications = () => {
-        setShowNotifications(!showNotifications);
-        if (!showNotifications) setUnreadCount(0);
-    };
-
-    const clearNotifications = () => {
-        setNotificationsHistory([]);
-        setUnreadCount(0);
-        setShowNotifications(false);
-    };
-
-    const handleBackClick = () => {
-        // Incrementăm ID-ul pentru a invalida orice procesare curentă
-        currentSearchId.current += 1;
-        
+    const handleReset = () => {
         setCityToView(null);
         setRecommendations([]);
         setSearchQuery('');
@@ -135,10 +80,12 @@ const Home = () => {
         setMapZoom(4);
         setMapCenter([48.0, 15.0]);
         setUserLocation(null);
+        setError('');
     };
 
     const handleMapClick = async (latlng) => {
         setUserLocation(latlng);
+        
         try {
             const response = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${latlng.lat}&lon=${latlng.lng}`);
             const data = await response.json();
@@ -147,14 +94,15 @@ const Home = () => {
             const city = address.city || address.town || address.village || address.hamlet;
             const country = address.country;
             
-            if (city) {
+            if (!cityToView && city) {
                 const fullLocation = country ? `${city}, ${country}` : city;
                 setSearchQuery(fullLocation);
             }
             
-            if (stompClientRef.current && stompClientRef.current.connected) {
+            // Folosim stompClient primit prin props
+            if (stompClient && stompClient.connected) {
                 const locationName = data.display_name.split(',')[0];
-                stompClientRef.current.send("/app/updateLocation", {}, JSON.stringify({
+                stompClient.send("/app/updateLocation", {}, JSON.stringify({
                     city: city || "Unknown", locationName: locationName, latitude: latlng.lat, longitude: latlng.lng
                 }));
             }
@@ -169,7 +117,6 @@ const Home = () => {
         e.preventDefault();
         if (!searchQuery.trim()) return;
         
-        // GENERĂM UN NOU ID DE CĂUTARE
         const searchId = Date.now();
         currentSearchId.current = searchId;
 
@@ -181,7 +128,6 @@ const Home = () => {
 
         recommendationService.getRecommendationsForCity(searchQuery)
             .then(async (response) => {
-                // Dacă între timp s-a schimbat ID-ul, ignorăm rezultatul
                 if (currentSearchId.current !== searchId) return;
 
                 const recs = response.data;
@@ -189,7 +135,7 @@ const Home = () => {
                 setLoading(false);
                 
                 const cityData = await geocodeCity(searchQuery);
-                if (currentSearchId.current !== searchId) return; // Verificare din nou
+                if (currentSearchId.current !== searchId) return;
 
                 let cityCoords = null;
                 if (cityData) {
@@ -199,7 +145,6 @@ const Home = () => {
                 }
 
                 for (const rec of recs) {
-                    // VERIFICARE CRITICĂ ÎN BUCLĂ
                     if (currentSearchId.current !== searchId) break;
 
                     await new Promise(r => setTimeout(r, 100));
@@ -222,8 +167,10 @@ const Home = () => {
                         }
                     }
 
-                    // Actualizăm starea doar dacă suntem încă în căutarea curentă
                     if (currentSearchId.current === searchId) {
+                        // MODIFICARE: Adăugăm descrierea în marker
+                        const description = wikiData?.extract || rec.description || "No description available.";
+                        
                         if (finalLat && finalLon) {
                             setMarkers(prev => [...prev, { 
                                 ...rec, 
@@ -231,7 +178,8 @@ const Home = () => {
                                 lat: finalLat, 
                                 lon: finalLon, 
                                 wikipediaLink: wikiData?.wikiUrl, 
-                                imageUrl: wikiData?.imageUrl 
+                                imageUrl: wikiData?.imageUrl,
+                                description: description // Salvăm descrierea
                             }]);
                             
                             setRecommendations(prevRecs => 
@@ -240,7 +188,7 @@ const Home = () => {
                                     name: finalName, 
                                     hasLocation: true,
                                     wikipediaLink: wikiData?.wikiUrl,
-                                    description: wikiData?.extract || r.description
+                                    description: description
                                 } : r)
                             );
                         } else {
@@ -249,7 +197,7 @@ const Home = () => {
                                     ...r, 
                                     hasLocation: false,
                                     wikipediaLink: wikiData?.wikiUrl,
-                                    description: wikiData?.extract || r.description
+                                    description: description
                                 } : r)
                             );
                         }
@@ -370,37 +318,36 @@ const Home = () => {
 
     return (
         <div className="home-container">
+            <LiveRecommendations newNotification={latestNotification} />
             <div className="header-container">
                 <h1>AI Travel Guide</h1>
-                <div className="notification-bell-container">
-                    <button className="notification-bell" onClick={toggleNotifications}>🔔{unreadCount > 0 && <span className="notification-badge">{unreadCount}</span>}</button>
-                    {showNotifications && (
-                        <div className="notifications-dropdown">
-                            <div className="notifications-header">
-                                <h3>Notifications</h3>
-                                {notificationsHistory.length > 0 && (
-                                    <button onClick={clearNotifications} className="clear-notifications-btn">Clear All</button>
-                                )}
-                            </div>
-                            {notificationsHistory.length > 0 ? <ul>{notificationsHistory.map((m, i) => <li key={i} className="notification-item">{m}</li>)}</ul> : <p className="no-notifications">No notifications yet.</p>}
-                        </div>
-                    )}
-                </div>
+                {/* Clopoțelul a fost mutat în Navbar */}
             </div>
-            {notification && <div className="websocket-notification">🔔 {notification}</div>}
+            
             {error && <p className="error-message">{error}</p>}
             
             <div className="search-section">
                 <h2>Search for a city to get recommendations:</h2>
                 <form onSubmit={handleSearch} className="city-selector-form">
-                    <input type="text" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} placeholder="e.g., Paris, Tokyo, Rome" className="city-search-input" />
+                    <input 
+                        type="text" 
+                        value={searchQuery} 
+                        onChange={(e) => setSearchQuery(e.target.value)} 
+                        placeholder="e.g., Paris, Tokyo, Rome" 
+                        className="city-search-input" 
+                    />
                     <button type="submit" className="get-recs-button">Search</button>
+                    {cityToView && (
+                        <button type="button" onClick={handleReset} className="reset-button" title="Reset Map">
+                            🔄
+                        </button>
+                    )}
                 </form>
             </div>
 
             {loading && <p>Loading...</p>}
 
-            <div className="map-container" style={{ height: '400px', marginBottom: '20px', marginTop: '20px' }}>
+            <div className="map-container">
                 <MapContainer center={mapCenter} zoom={mapZoom} style={{ height: '100%' }}>
                     <ChangeView center={mapCenter} zoom={mapZoom} />
                     <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
@@ -419,6 +366,16 @@ const Home = () => {
                                 <div className="popup-content">
                                     <strong>{m.name}</strong><br/>
                                     {m.imageUrl && <img src={m.imageUrl} className="popup-image" alt="poi" />}
+                                    
+                                    {/* MODIFICARE: Afișăm descrierea trunchiată */}
+                                    {m.description && (
+                                        <p className="popup-description">
+                                            {m.description.length > 100 
+                                                ? m.description.substring(0, 100) + "..." 
+                                                : m.description}
+                                        </p>
+                                    )}
+
                                     {m.category === 'Tourist Attraction' && m.wikipediaLink && (
                                         <div className="popup-link"><a href={m.wikipediaLink} target="_blank" rel="noopener noreferrer">Wikipedia</a></div>
                                     )}
